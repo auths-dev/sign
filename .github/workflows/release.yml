@@ -1,0 +1,84 @@
+# Triggered by: python scripts/release.py --push
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+      - name: Check dist is up to date
+        run: git diff --exit-code -- dist/ ':!dist/**/*.d.ts.map'
+
+      # Dogfood: sign dist/index.js using ourselves
+      - name: Sign and verify dist/index.js
+        uses: ./
+        with:
+          passphrase: ${{ secrets.AUTHS_CI_PASSPHRASE }}
+          keychain: ${{ secrets.AUTHS_CI_KEYCHAIN }}
+          identity-repo: ${{ secrets.AUTHS_CI_IDENTITY_BUNDLE }}
+          verify-bundle: ${{ secrets.AUTHS_CI_IDENTITY_BUNDLE_JSON }}
+          files: 'dist/index.js'
+          verify: true
+          note: 'GitHub Actions release — ${{ github.ref_name }}'
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd dist
+          sha256sum index.js > index.js.sha256
+          if [ -f index.js.auths.json ]; then
+            sha256sum index.js.auths.json >> index.js.sha256
+          fi
+          cat index.js.sha256
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          make_latest: true
+          files: |
+            dist/index.js.auths.json
+            dist/index.js.sha256
+          body: |
+            ## Auths Sign GitHub Action
+
+            Sign build artifacts in CI using [Auths](https://github.com/auths-dev/auths) identity keys.
+
+            ### Usage
+
+            ```yaml
+            - uses: auths-dev/sign@${{ github.ref_name }}
+              with:
+                token: ${{ secrets.AUTHS_CI_TOKEN }}
+                files: 'dist/index.js'
+                verify: true
+            ```
+
+            See the [README](https://github.com/auths-dev/sign#readme) for full configuration options.
+
+      - name: Update floating major tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          MAJOR="${TAG%%.*}"
+          git tag -f "$MAJOR" "$TAG"
+          git push origin "$MAJOR" --force

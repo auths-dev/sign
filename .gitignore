@@ -1,0 +1,11 @@
+# Dependencies
+node_modules/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# TypeScript declaration sourcemaps (contain local build paths)
+dist/**/*.d.ts.map
+
+# Local tool directories
+.flow/

@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Check dist is committed
+        run: |
+          git diff --exit-code -- dist/ ':!dist/**/*.d.ts.map' || {
+            echo "::error::dist/ is out of date. Run 'just build' (or 'npm run build') and commit the result."
+            exit 1
+          }
+
+  verify-commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify commit signatures
+        uses: auths-dev/auths-verify-github-action@v1
+        with:
+          fail-on-unsigned: true
