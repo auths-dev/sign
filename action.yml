@@ -1,5 +1,5 @@
-name: 'Sign Artifacts with Auths'
-description: 'Sign build artifacts using Auths identity keys in CI'
+name: 'Sign with Auths'
+description: 'Sign build artifacts and/or commits using Auths identity keys in CI'
 author: 'auths'
 
 inputs:
@@ -25,7 +25,12 @@ inputs:
     default: ''
   files:
     description: 'Glob patterns for files to sign, one per line'
-    required: true
+    required: false
+    default: ''
+  commits:
+    description: 'Git revision range to sign (e.g., HEAD~1..HEAD). Merge commits are skipped.'
+    required: false
+    default: ''
   verify:
     description: 'Verify each file after signing using the verify bundle from the token'
     required: false
@@ -48,8 +53,10 @@ outputs:
     description: 'JSON array of file paths that were signed'
   attestation-files:
     description: 'JSON array of attestation file paths (.auths.json)'
+  signed-commits:
+    description: 'JSON array of signed commit SHAs'
   verified:
-    description: 'Whether all signed files passed verification (empty string if verify was not requested)'
+    description: 'Whether all signed artifacts/commits passed verification (empty string if verify was not requested)'
 
 runs:
   using: 'node20'
