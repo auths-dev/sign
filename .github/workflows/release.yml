@@ -64,9 +64,9 @@ jobs:
             ### Usage
 
             ```yaml
-            - uses: auths-dev/sign@${{ github.ref_name }}
+            - uses: auths-dev/sign@v1
               with:
-                token: ${{ secrets.AUTHS_CI_TOKEN }}
+                token: $\{{ secrets.AUTHS_CI_TOKEN }}
                 files: 'dist/index.js'
                 verify: true
             ```
