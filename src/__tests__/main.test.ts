@@ -117,12 +117,21 @@ describe('Sign action integration', () => {
     expect(attestations).toEqual(['/workspace/dist/index.js.auths.json']);
   });
 
-  it('fails when no files match glob', async () => {
+  it('warns when no files match glob (files-only mode)', async () => {
     mockGlobFiles = [];
 
     await runMain();
 
-    expect(mockFailed).toContain('No files matched the provided glob patterns');
+    // With no commits input, empty glob results in a warning (not a hard failure)
+    expect(mockWarnings.some(m => m.includes('No files matched'))).toBe(true);
+  });
+
+  it('fails when neither files nor commits provided', async () => {
+    mockMultilineInputs = { 'files': [] };
+
+    await runMain();
+
+    expect(mockFailed).toContain('At least one of `files` or `commits` must be provided');
   });
 
   it('fails when signing returns non-zero exit code', async () => {
@@ -158,7 +167,7 @@ describe('Sign action integration', () => {
     await runMain();
 
     expect(mockOutputs['verified']).toBe('false');
-    expect(mockFailed).toContain('Post-sign verification failed for one or more files');
+    expect(mockFailed).toContain('Post-sign verification failed for one or more artifacts/commits');
   });
 
   it('warns when verify requested but no bundle', async () => {
