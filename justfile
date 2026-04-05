@@ -21,6 +21,10 @@ ci: test build check-dist
 ci-setup:
     bash scripts/ci-setup.sh
 
+# Sign the dist/index.js artifact locally (creates dist/index.js.auths.json)
+sign-dist:
+    auths artifact sign dist/index.js
+
 # Cut a release: bump version (if needed), commit, then tag+push via release script
 # Usage: just release 1.0.0
 release VERSION: test build
