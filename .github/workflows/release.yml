@@ -34,10 +34,7 @@ jobs:
       - name: Sign and verify dist/index.js
         uses: ./
         with:
-          passphrase: ${{ secrets.AUTHS_CI_PASSPHRASE }}
-          keychain: ${{ secrets.AUTHS_CI_KEYCHAIN }}
-          identity-repo: ${{ secrets.AUTHS_CI_IDENTITY_BUNDLE }}
-          verify-bundle: ${{ secrets.AUTHS_CI_IDENTITY_BUNDLE_JSON }}
+          token: ${{ secrets.AUTHS_CI_TOKEN }}
           files: 'dist/index.js'
           verify: true
           note: 'GitHub Actions release — ${{ github.ref_name }}'
