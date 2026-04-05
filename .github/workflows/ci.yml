@@ -41,6 +41,6 @@ jobs:
           fetch-depth: 0
 
       - name: Verify commit signatures
-        uses: auths-dev/auths-verify-github-action@v1
+        uses: auths-dev/verify@v1
         with:
           fail-on-unsigned: true
