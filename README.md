@@ -19,6 +19,7 @@ This signs `dist/index.js`, creates `dist/index.js.auths.json`, and verifies the
 ### 1. Install the Auths CLI
 
 ```bash
+brew tap auths-dev/auths-cli
 brew install auths          # macOS
 # or download from https://github.com/auths-dev/auths/releases
 ```
