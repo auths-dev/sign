@@ -1,6 +1,6 @@
 {
   "name": "@auths/sign-action",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "GitHub Action to sign build artifacts using Auths identity keys",
   "main": "dist/index.js",
   "scripts": {
