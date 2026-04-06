@@ -1,5 +1,9 @@
 # auths-dev/sign
 
+[![Verified with Auths](https://img.shields.io/badge/Verified%20with-Auths-4B9CD3?logo=github&logoColor=white)](https://github.com/auths-dev/verify)
+[![Verify Commits](https://github.com/auths-dev/sign/actions/workflows/verify-commits.yml/badge.svg)](https://github.com/auths-dev/sign/actions/workflows/verify-commits.yml?query=branch%3Amain+event%3Apush)
+[![Sign Commits](https://github.com/auths-dev/sign/actions/workflows/sign-commits.yml/badge.svg)](https://github.com/auths-dev/sign/actions/workflows/sign-commits.yml?query=branch%3Amain)
+
 Sign build artifacts in CI with [Auths](https://github.com/auths-dev/auths) identity keys. Produces `.auths.json` attestation files that anyone can verify.
 
 ## Quick start

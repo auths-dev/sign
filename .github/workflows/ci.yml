@@ -32,15 +32,3 @@ jobs:
             echo "::error::dist/ is out of date. Run 'just build' (or 'npm run build') and commit the result."
             exit 1
           }
-
-  verify-commits:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Verify commit signatures
-        uses: auths-dev/verify@v1
-        with:
-          fail-on-unsigned: true
