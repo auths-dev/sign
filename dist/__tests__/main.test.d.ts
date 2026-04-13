@@ -1,5 +1,5 @@
 /**
- * Integration tests for the sign action's run() flow.
+ * Integration tests for the sign action's ephemeral signing flow.
  * Since run() executes at import time, we use jest.isolateModulesAsync.
  */
 declare let mockInputs: Record<string, string>;
@@ -14,7 +14,5 @@ declare let mockExecOutputResult: {
     stdout: string;
     stderr: string;
 };
-declare const mockResolveCredentials: jest.Mock<any, any, any>;
-declare const mockCleanupPaths: jest.Mock<any, any, any>;
 declare function resetMockState(): void;
 declare function runMain(): Promise<void>;

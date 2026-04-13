@@ -30,13 +30,11 @@ jobs:
       - name: Check dist is up to date
         run: git diff --exit-code -- dist/ ':!dist/**/*.d.ts.map'
 
-      # Dogfood: sign dist/index.js using ourselves
-      - name: Sign and verify dist/index.js
+      # Dogfood: sign dist/index.js using ourselves (ephemeral, no secrets)
+      - name: Sign dist/index.js
         uses: ./
         with:
-          token: ${{ secrets.AUTHS_CI_TOKEN }}
           files: 'dist/index.js'
-          verify: true
           note: 'GitHub Actions release — ${{ github.ref_name }}'
 
       - name: Generate SHA256 checksums
@@ -59,16 +57,14 @@ jobs:
           body: |
             ## Auths Sign GitHub Action
 
-            Sign build artifacts in CI using [Auths](https://github.com/auths-dev/auths) identity keys.
+            Sign build artifacts in CI using ephemeral keys. No secrets needed.
 
             ### Usage
 
             ```yaml
             - uses: auths-dev/sign@v1
               with:
-                token: $\{{ secrets.AUTHS_CI_TOKEN }}
                 files: 'dist/index.js'
-                verify: true
             ```
 
             See the [README](https://github.com/auths-dev/sign#readme) for full configuration options.

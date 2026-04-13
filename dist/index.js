@@ -67346,42 +67346,28 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(37484));
 const exec = __importStar(__nccwpck_require__(95236));
 const glob = __importStar(__nccwpck_require__(47206));
-const fs = __importStar(__nccwpck_require__(79896));
 const path = __importStar(__nccwpck_require__(16928));
+const fs = __importStar(__nccwpck_require__(79896));
 const installer_1 = __nccwpck_require__(47651);
-const token_1 = __nccwpck_require__(94606);
 async function run() {
-    let credentials = null;
     try {
-        // Validate: at least one of files or commits must be provided
         const filePatterns = core.getMultilineInput('files').filter(p => p.trim());
         const commitsRange = core.getInput('commits').trim();
         if (filePatterns.length === 0 && !commitsRange) {
             throw new Error('At least one of `files` or `commits` must be provided');
         }
-        // 1. Resolve credentials
-        credentials = await (0, token_1.resolveCredentials)();
-        core.info('Credentials resolved');
-        // 2. Install auths CLI
+        // Install auths CLI
         const version = core.getInput('auths-version') || '';
         const authsPath = await (0, installer_1.ensureAuthsInstalled)(version);
         if (!authsPath) {
             throw new Error('Failed to find or install auths CLI');
         }
-        const deviceKey = core.getInput('device-key') || 'ci-release-device';
+        const commitSha = core.getInput('commit-sha') || process.env.GITHUB_SHA || '';
         const note = core.getInput('note') || '';
-        const shouldVerify = core.getInput('verify') === 'true';
-        let allVerified = true;
         const signedFiles = [];
         const attestationFiles = [];
         const signedCommits = [];
-        const authsEnv = {
-            ...process.env,
-            AUTHS_PASSPHRASE: credentials.passphrase,
-            AUTHS_KEYCHAIN_BACKEND: 'file',
-            AUTHS_KEYCHAIN_FILE: credentials.keychainPath,
-        };
-        // 3. Sign artifacts (if files provided)
+        // Sign artifacts with ephemeral keys (no secrets needed)
         if (filePatterns.length > 0) {
             const patterns = filePatterns.join('\n');
             const globber = await glob.create(patterns, { followSymbolicLinks: false });
@@ -67404,15 +67390,13 @@ async function run() {
                 core.info(`Found ${files.length} file(s) to sign`);
                 for (const file of files) {
                     core.info(`Signing: ${path.basename(file)}`);
-                    const cliArgs = [
-                        'artifact', 'sign', file,
-                        '--device-key', deviceKey,
-                        '--repo', credentials.identityRepoPath,
-                    ];
+                    // Ephemeral CI signing — no secrets, no keychain, no token
+                    const cliArgs = ['artifact', 'sign', file, '--ci'];
+                    if (commitSha)
+                        cliArgs.push('--commit', commitSha);
                     if (note)
                         cliArgs.push('--note', note);
                     const exitCode = await exec.exec(authsPath, cliArgs, {
-                        env: authsEnv,
                         ignoreReturnCode: true,
                     });
                     if (exitCode !== 0) {
@@ -67428,11 +67412,10 @@ async function run() {
                 }
             }
         }
-        // 4. Sign commits (if commits range provided)
+        // Sign commits (if commits range provided)
         if (commitsRange) {
             core.info('');
             core.info('=== Commit Signing ===');
-            // Enumerate commits in range (skip merges)
             const revListResult = await exec.getExecOutput('git', ['rev-list', '--no-merges', commitsRange], { ignoreReturnCode: true, silent: true });
             if (revListResult.exitCode !== 0) {
                 throw new Error(`Failed to enumerate commits in range '${commitsRange}': ${revListResult.stderr.trim()}`);
@@ -67445,13 +67428,8 @@ async function run() {
                 core.info(`Found ${commitShas.length} commit(s) to sign`);
                 for (const sha of commitShas) {
                     core.info(`Signing commit: ${sha.substring(0, 8)}`);
-                    const cliArgs = [
-                        'signcommit', sha,
-                        '--device-key', deviceKey,
-                        '--repo', credentials.identityRepoPath,
-                    ];
+                    const cliArgs = ['artifact', 'sign', '--ci', '--commit', sha];
                     const exitCode = await exec.exec(authsPath, cliArgs, {
-                        env: authsEnv,
                         ignoreReturnCode: true,
                     });
                     if (exitCode !== 0) {
@@ -67461,96 +67439,14 @@ async function run() {
                     signedCommits.push(sha);
                     core.info(`\u2713 Signed commit ${sha.substring(0, 8)}`);
                 }
-                // Push attestation refs
-                if (signedCommits.length > 0) {
-                    core.info('Pushing attestation refs...');
-                    const pushResult = await exec.exec('git', ['push', 'origin', 'refs/auths/commits/*:refs/auths/commits/*'], { ignoreReturnCode: true });
-                    if (pushResult !== 0) {
-                        core.warning('Failed to push attestation refs (may not have contents: write permission)');
-                    }
-                    else {
-                        core.info(`\u2713 Pushed attestation refs for ${signedCommits.length} commit(s)`);
-                    }
-                    // Also push KERI refs if they exist
-                    const keriCheck = await exec.getExecOutput('git', ['show-ref', '--heads', '--tags'], { ignoreReturnCode: true, silent: true });
-                    if (keriCheck.stdout.includes('refs/keri')) {
-                        await exec.exec('git', ['push', 'origin', 'refs/keri/*:refs/keri/*'], {
-                            ignoreReturnCode: true,
-                        });
-                    }
-                }
             }
         }
-        // 5. Optionally verify
-        if (shouldVerify) {
-            // Verify artifacts
-            if (signedFiles.length > 0) {
-                if (!credentials.verifyBundlePath) {
-                    core.warning('verify: true requested but no verify bundle available for artifacts.');
-                    allVerified = false;
-                }
-                else {
-                    core.info('');
-                    core.info('=== Post-Sign Artifact Verification ===');
-                    for (const file of signedFiles) {
-                        const result = await exec.getExecOutput(authsPath, ['artifact', 'verify', file, '--identity-bundle', credentials.verifyBundlePath, '--json'], { ignoreReturnCode: true, silent: true });
-                        if (result.stdout.trim()) {
-                            try {
-                                const parsed = JSON.parse(result.stdout.trim());
-                                if (parsed.valid === true) {
-                                    core.info(`\u2713 Verified ${path.basename(file)}${parsed.issuer ? ` (issuer: ${parsed.issuer})` : ''}`);
-                                }
-                                else {
-                                    core.warning(`\u2717 ${path.basename(file)}: ${parsed.error || 'verification returned valid=false'}`);
-                                    allVerified = false;
-                                }
-                            }
-                            catch {
-                                core.warning(`\u2717 ${path.basename(file)}: could not parse verification output`);
-                                allVerified = false;
-                            }
-                        }
-                        else {
-                            core.warning(`\u2717 ${path.basename(file)}: ${result.stderr.trim() || `exit code ${result.exitCode}`}`);
-                            allVerified = false;
-                        }
-                    }
-                }
-            }
-            // Verify commits
-            if (signedCommits.length > 0) {
-                core.info('');
-                core.info('=== Post-Sign Commit Verification ===');
-                for (const sha of signedCommits) {
-                    const verifyArgs = ['verify-commit', sha];
-                    if (credentials.verifyBundlePath) {
-                        verifyArgs.push('--identity-bundle', credentials.verifyBundlePath);
-                    }
-                    const result = await exec.exec(authsPath, verifyArgs, {
-                        env: authsEnv,
-                        ignoreReturnCode: true,
-                    });
-                    if (result === 0) {
-                        core.info(`\u2713 Verified commit ${sha.substring(0, 8)}`);
-                    }
-                    else {
-                        core.warning(`\u2717 Commit ${sha.substring(0, 8)} verification failed`);
-                        allVerified = false;
-                    }
-                }
-            }
-        }
-        // 6. Set outputs
+        // Set outputs
         core.setOutput('signed-files', JSON.stringify(signedFiles));
         core.setOutput('attestation-files', JSON.stringify(attestationFiles));
         core.setOutput('signed-commits', JSON.stringify(signedCommits));
-        core.setOutput('verified', shouldVerify ? allVerified.toString() : '');
-        // 7. Step summary
-        await writeStepSummary(signedFiles, attestationFiles, signedCommits, shouldVerify, allVerified);
-        // 8. Fail if verification was requested and failed
-        if (shouldVerify && !allVerified) {
-            core.setFailed('Post-sign verification failed for one or more artifacts/commits');
-        }
+        // Step summary
+        await writeStepSummary(signedFiles, attestationFiles, signedCommits);
     }
     catch (error) {
         if (error instanceof Error) {
@@ -67560,13 +67456,8 @@ async function run() {
             core.setFailed('An unexpected error occurred');
         }
     }
-    finally {
-        if (credentials) {
-            (0, token_1.cleanupPaths)(credentials.tempPaths);
-        }
-    }
 }
-async function writeStepSummary(signedFiles, attestationFiles, signedCommits, verified, allVerified) {
+async function writeStepSummary(signedFiles, attestationFiles, signedCommits) {
     if (signedFiles.length === 0 && signedCommits.length === 0)
         return;
     const lines = [];
@@ -67580,10 +67471,7 @@ async function writeStepSummary(signedFiles, attestationFiles, signedCommits, ve
         for (let i = 0; i < signedFiles.length; i++) {
             const file = path.basename(signedFiles[i]);
             const attest = path.basename(attestationFiles[i]);
-            const status = verified
-                ? (allVerified ? '\u2705 Signed + Verified' : '\u26a0\ufe0f Signed (verify failed)')
-                : '\u2705 Signed';
-            lines.push(`| \`${file}\` | \`${attest}\` | ${status} |`);
+            lines.push(`| \`${file}\` | \`${attest}\` | \u2705 Signed |`);
         }
         lines.push('');
     }
@@ -67593,195 +67481,15 @@ async function writeStepSummary(signedFiles, attestationFiles, signedCommits, ve
         lines.push('| Commit | Status |');
         lines.push('|--------|--------|');
         for (const sha of signedCommits) {
-            const status = verified
-                ? (allVerified ? '\u2705 Signed + Verified' : '\u26a0\ufe0f Signed')
-                : '\u2705 Signed';
-            lines.push(`| \`${sha.substring(0, 8)}\` | ${status} |`);
+            lines.push(`| \`${sha.substring(0, 8)}\` | \u2705 Signed |`);
         }
         lines.push('');
     }
     const totalCount = signedFiles.length + signedCommits.length;
-    lines.push(`**${totalCount}** item(s) signed`);
-    if (verified) {
-        lines.push(allVerified ? '**Verification:** All passed' : '**Verification:** Failed');
-    }
+    lines.push(`**${totalCount}** item(s) signed with ephemeral keys. No CI secrets used.`);
     await core.summary.addRaw(lines.join('\n')).write();
 }
 run();
-
-
-/***/ }),
-
-/***/ 94606:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-"use strict";
-
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.resolveCredentials = resolveCredentials;
-exports.cleanupPaths = cleanupPaths;
-const core = __importStar(__nccwpck_require__(37484));
-const exec = __importStar(__nccwpck_require__(95236));
-const fs = __importStar(__nccwpck_require__(79896));
-const os = __importStar(__nccwpck_require__(70857));
-const path = __importStar(__nccwpck_require__(16928));
-/**
- * Resolve credentials from either a CiToken JSON or individual action inputs.
- * Prefers `token` when provided. Falls back to individual inputs.
- */
-async function resolveCredentials() {
-    const tokenInput = core.getInput('token');
-    const tempPaths = [];
-    try {
-        if (tokenInput) {
-            return await resolveFromCiToken(tokenInput, tempPaths);
-        }
-        return await resolveFromIndividualInputs(tempPaths);
-    }
-    catch (error) {
-        cleanupPaths(tempPaths);
-        throw error;
-    }
-}
-async function resolveFromCiToken(tokenJson, tempPaths) {
-    let token;
-    try {
-        token = JSON.parse(tokenJson);
-    }
-    catch {
-        throw new Error('Failed to parse token input as JSON. Expected AUTHS_CI_TOKEN format.');
-    }
-    if (token.version !== 1) {
-        throw new Error(`Unsupported CiToken version: ${token.version}. This action supports version 1.`);
-    }
-    if (!token.passphrase)
-        throw new Error('CiToken missing required field: passphrase');
-    if (!token.keychain)
-        throw new Error('CiToken missing required field: keychain');
-    if (!token.identity_repo)
-        throw new Error('CiToken missing required field: identity_repo');
-    // Check TTL
-    if (token.created_at && token.max_valid_for_secs) {
-        const ageSeconds = (Date.now() - new Date(token.created_at).getTime()) / 1000;
-        if (ageSeconds > token.max_valid_for_secs) {
-            throw new Error(`CiToken expired: ${Math.round(ageSeconds)}s old, max ${token.max_valid_for_secs}s. ` +
-                `Regenerate with: auths ci setup`);
-        }
-    }
-    const tmpBase = path.join(os.tmpdir(), `auths-sign-${Date.now()}`);
-    fs.mkdirSync(tmpBase, { recursive: true });
-    tempPaths.push(tmpBase);
-    // Write keychain
-    const keychainPath = path.join(tmpBase, 'ci-keychain.enc');
-    fs.writeFileSync(keychainPath, Buffer.from(token.keychain, 'base64'));
-    fs.chmodSync(keychainPath, 0o600);
-    // Extract identity repo tar.gz
-    const identityTarPath = path.join(tmpBase, 'identity.tar.gz');
-    fs.writeFileSync(identityTarPath, Buffer.from(token.identity_repo, 'base64'));
-    const identityDir = path.join(tmpBase, 'identity');
-    fs.mkdirSync(identityDir, { recursive: true });
-    await exec.exec('tar', ['-xzf', identityTarPath, '-C', identityDir], { silent: true });
-    const identityRepoPath = resolveAuthsDir(identityDir);
-    // Write verify bundle (if present)
-    let verifyBundlePath = '';
-    if (token.verify_bundle && Object.keys(token.verify_bundle).length > 0) {
-        verifyBundlePath = path.join(tmpBase, 'verify-bundle.json');
-        fs.writeFileSync(verifyBundlePath, JSON.stringify(token.verify_bundle), 'utf8');
-    }
-    core.setSecret(token.passphrase);
-    return { passphrase: token.passphrase, keychainPath, identityRepoPath, verifyBundlePath, tempPaths };
-}
-async function resolveFromIndividualInputs(tempPaths) {
-    const passphrase = core.getInput('passphrase');
-    const keychainB64 = core.getInput('keychain');
-    const identityRepoB64 = core.getInput('identity-repo');
-    const verifyBundleJson = core.getInput('verify-bundle');
-    if (!passphrase)
-        throw new Error('Neither token nor passphrase provided. Set the token input or all individual inputs.');
-    if (!keychainB64)
-        throw new Error('keychain input is required when using individual inputs.');
-    if (!identityRepoB64)
-        throw new Error('identity-repo input is required when using individual inputs.');
-    const tmpBase = path.join(os.tmpdir(), `auths-sign-${Date.now()}`);
-    fs.mkdirSync(tmpBase, { recursive: true });
-    tempPaths.push(tmpBase);
-    // Write keychain
-    const keychainPath = path.join(tmpBase, 'ci-keychain.enc');
-    fs.writeFileSync(keychainPath, Buffer.from(keychainB64.replace(/\s/g, ''), 'base64'));
-    fs.chmodSync(keychainPath, 0o600);
-    // Extract identity repo
-    const identityTarPath = path.join(tmpBase, 'identity.tar.gz');
-    fs.writeFileSync(identityTarPath, Buffer.from(identityRepoB64.replace(/\s/g, ''), 'base64'));
-    const identityDir = path.join(tmpBase, 'identity');
-    fs.mkdirSync(identityDir, { recursive: true });
-    await exec.exec('tar', ['-xzf', identityTarPath, '-C', identityDir], { silent: true });
-    const identityRepoPath = resolveAuthsDir(identityDir);
-    // Write verify bundle (if present)
-    let verifyBundlePath = '';
-    if (verifyBundleJson) {
-        verifyBundlePath = path.join(tmpBase, 'verify-bundle.json');
-        fs.writeFileSync(verifyBundlePath, verifyBundleJson, 'utf8');
-    }
-    core.setSecret(passphrase);
-    return { passphrase, keychainPath, identityRepoPath, verifyBundlePath, tempPaths };
-}
-function resolveAuthsDir(extractedDir) {
-    const nested = path.join(extractedDir, '.auths');
-    if (fs.existsSync(nested))
-        return nested;
-    return extractedDir;
-}
-function cleanupPaths(paths) {
-    for (const p of paths) {
-        try {
-            if (fs.existsSync(p)) {
-                const stat = fs.statSync(p);
-                if (stat.isDirectory()) {
-                    fs.rmSync(p, { recursive: true, force: true });
-                }
-                else {
-                    fs.unlinkSync(p);
-                }
-            }
-        }
-        catch {
-            // Best-effort cleanup
-        }
-    }
-}
 
 
 /***/ }),

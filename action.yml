@@ -1,28 +1,8 @@
 name: 'Sign with Auths'
-description: 'Sign build artifacts and/or commits using Auths identity keys in CI'
+description: 'Sign build artifacts using ephemeral Auths keys in CI — no secrets needed'
 author: 'auths'
 
 inputs:
-  token:
-    description: 'AUTHS_CI_TOKEN JSON (preferred) — contains passphrase, keychain, identity repo, and verify bundle'
-    required: false
-    default: ''
-  passphrase:
-    description: 'Auths device key passphrase (fallback when token is not provided)'
-    required: false
-    default: ''
-  keychain:
-    description: 'Base64-encoded encrypted keychain file (fallback when token is not provided)'
-    required: false
-    default: ''
-  identity-repo:
-    description: 'Base64-encoded tar.gz of ~/.auths identity repo (fallback when token is not provided)'
-    required: false
-    default: ''
-  verify-bundle:
-    description: 'Identity bundle JSON for post-sign verification (fallback when token is not provided)'
-    required: false
-    default: ''
   files:
     description: 'Glob patterns for files to sign, one per line'
     required: false
@@ -31,14 +11,10 @@ inputs:
     description: 'Git revision range to sign (e.g., HEAD~1..HEAD). Merge commits are skipped.'
     required: false
     default: ''
-  verify:
-    description: 'Verify each file after signing using the verify bundle from the token'
+  commit-sha:
+    description: 'Commit SHA to anchor ephemeral attestation to (default: GITHUB_SHA)'
     required: false
-    default: 'false'
-  device-key:
-    description: 'Alias of the device key to sign with'
-    required: false
-    default: 'ci-release-device'
+    default: ''
   note:
     description: 'Optional note to include in the attestation'
     required: false
@@ -55,8 +31,6 @@ outputs:
     description: 'JSON array of attestation file paths (.auths.json)'
   signed-commits:
     description: 'JSON array of signed commit SHAs'
-  verified:
-    description: 'Whether all signed artifacts/commits passed verification (empty string if verify was not requested)'
 
 runs:
   using: 'node20'

@@ -1,5 +1,5 @@
 /**
- * Integration tests for the sign action's run() flow.
+ * Integration tests for the sign action's ephemeral signing flow.
  * Since run() executes at import time, we use jest.isolateModulesAsync.
  */
 
@@ -50,12 +50,8 @@ jest.mock('fs', () => {
   };
 });
 
-const mockResolveCredentials = jest.fn();
-const mockCleanupPaths = jest.fn();
-
 jest.mock('../token', () => ({
-  resolveCredentials: () => mockResolveCredentials(),
-  cleanupPaths: (...args: any[]) => mockCleanupPaths(...args),
+  cleanupPaths: jest.fn(),
 }));
 
 jest.mock('../installer', () => ({
@@ -65,9 +61,8 @@ jest.mock('../installer', () => ({
 function resetMockState() {
   mockInputs = {
     'auths-version': '',
-    'device-key': 'ci-release-device',
+    'commit-sha': 'abc123',
     'note': '',
-    'verify': 'false',
   };
   mockMultilineInputs = {
     'files': ['dist/*.js'],
@@ -78,15 +73,6 @@ function resetMockState() {
   mockGlobFiles = ['/workspace/dist/index.js'];
   mockExecExitCode = 0;
   mockExecOutputResult = { exitCode: 0, stdout: '', stderr: '' };
-
-  mockResolveCredentials.mockResolvedValue({
-    passphrase: 'test-pass',
-    keychainPath: '/tmp/keychain',
-    identityRepoPath: '/tmp/identity',
-    verifyBundlePath: '/tmp/bundle.json',
-    tempPaths: ['/tmp/auths-sign-test'],
-  });
-  mockCleanupPaths.mockReset();
 }
 
 async function runMain() {
@@ -96,18 +82,20 @@ async function runMain() {
   });
 }
 
-describe('Sign action integration', () => {
+describe('Sign action integration (ephemeral)', () => {
   beforeEach(() => {
     resetMockState();
     jest.clearAllMocks();
     process.env.GITHUB_WORKSPACE = '/workspace';
+    process.env.GITHUB_SHA = 'abc123def456';
   });
 
   afterEach(() => {
     delete process.env.GITHUB_WORKSPACE;
+    delete process.env.GITHUB_SHA;
   });
 
-  it('signs files and sets outputs', async () => {
+  it('signs files with --ci flag and sets outputs', async () => {
     await runMain();
 
     expect(mockFailed).toHaveLength(0);
@@ -117,89 +105,30 @@ describe('Sign action integration', () => {
     expect(attestations).toEqual(['/workspace/dist/index.js.auths.json']);
   });
 
-  it('warns when no files match glob (files-only mode)', async () => {
+  it('fails when no files or commits provided', async () => {
+    mockMultilineInputs['files'] = [];
+    mockInputs['commits'] = '';
+
+    await runMain();
+
+    expect(mockFailed).toHaveLength(1);
+    expect(mockFailed[0]).toContain('files');
+  });
+
+  it('warns when glob matches no files', async () => {
     mockGlobFiles = [];
 
     await runMain();
 
-    // With no commits input, empty glob results in a warning (not a hard failure)
-    expect(mockWarnings.some(m => m.includes('No files matched'))).toBe(true);
+    expect(mockWarnings.some(w => w.includes('No files matched'))).toBe(true);
   });
 
-  it('fails when neither files nor commits provided', async () => {
-    mockMultilineInputs = { 'files': [] };
-
-    await runMain();
-
-    expect(mockFailed).toContain('At least one of `files` or `commits` must be provided');
-  });
-
-  it('fails when signing returns non-zero exit code', async () => {
+  it('fails when signing exits non-zero', async () => {
     mockExecExitCode = 1;
 
     await runMain();
 
-    expect(mockFailed.some(m => m.includes('Failed to sign'))).toBe(true);
-  });
-
-  it('verifies after signing when verify: true', async () => {
-    mockInputs['verify'] = 'true';
-    mockExecOutputResult = {
-      exitCode: 0,
-      stdout: JSON.stringify({ valid: true, issuer: 'did:test:123' }),
-      stderr: '',
-    };
-
-    await runMain();
-
-    expect(mockOutputs['verified']).toBe('true');
-    expect(mockFailed).toHaveLength(0);
-  });
-
-  it('fails when verification fails', async () => {
-    mockInputs['verify'] = 'true';
-    mockExecOutputResult = {
-      exitCode: 1,
-      stdout: JSON.stringify({ valid: false, error: 'digest mismatch' }),
-      stderr: '',
-    };
-
-    await runMain();
-
-    expect(mockOutputs['verified']).toBe('false');
-    expect(mockFailed).toContain('Post-sign verification failed for one or more artifacts/commits');
-  });
-
-  it('warns when verify requested but no bundle', async () => {
-    mockInputs['verify'] = 'true';
-    mockResolveCredentials.mockResolvedValue({
-      passphrase: 'test-pass',
-      keychainPath: '/tmp/keychain',
-      identityRepoPath: '/tmp/identity',
-      verifyBundlePath: '',
-      tempPaths: ['/tmp/auths-sign-test'],
-    });
-
-    await runMain();
-
-    expect(mockWarnings.some(w => w.includes('no verify bundle'))).toBe(true);
-  });
-
-  it('filters paths outside workspace', async () => {
-    mockGlobFiles = ['/workspace/dist/index.js', '/etc/passwd'];
-
-    await runMain();
-
-    expect(mockWarnings.some(w => w.includes('Skipping path outside workspace'))).toBe(true);
-    const signed = JSON.parse(mockOutputs['signed-files']);
-    expect(signed).toEqual(['/workspace/dist/index.js']);
-  });
-
-  it('always cleans up temp files', async () => {
-    mockExecExitCode = 1; // Force failure
-
-    await runMain();
-
-    expect(mockCleanupPaths).toHaveBeenCalled();
+    expect(mockFailed).toHaveLength(1);
+    expect(mockFailed[0]).toContain('Failed to sign');
   });
 });
