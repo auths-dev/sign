@@ -1,0 +1,31 @@
+# Starter workflow for auths-dev/sign.
+# Copy this into your repository at .github/workflows/auths.yml and adjust `files`.
+#
+# Signs your build artifacts with ephemeral, per-run keys — no secrets, no id-token.
+# Trust is anchored to the commit, not to a CI credential.
+name: Sign artifacts
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write          # ephemeral signing needs no id-token and no secrets
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: auths-dev/sign@v1
+        with:
+          # Pin the Auths CLI — the action never resolves `latest`, and the pinned
+          # release must publish a `.sha256` checksum (it fails closed otherwise).
+          auths-version: "0.0.1-rc.12"
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+          # Uncomment once you commit a `.auths/roots` trust root (`auths init`) so
+          # downstream `auths verify` can anchor the signature:
+          # fail-on-unanchored: true
