@@ -14,5 +14,6 @@ declare let mockExecOutputResult: {
     stdout: string;
     stderr: string;
 };
+declare let mockRootsExists: boolean;
 declare function resetMockState(): void;
 declare function runMain(): Promise<void>;

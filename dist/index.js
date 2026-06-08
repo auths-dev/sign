@@ -67154,8 +67154,14 @@ async function ensureAuthsInstalled(version) {
     catch {
         // Not found in PATH
     }
+    // Supply-chain hardening: require an explicitly pinned version; never resolve
+    // `releases/latest`. (A pre-installed `auths` on PATH is exempt — handled above.)
+    if (!version) {
+        throw new Error("The 'auths-version' input must be pinned to a released version (e.g. '0.0.1-rc.12'); " +
+            "resolving 'latest' is not allowed.");
+    }
     // Determine the version for cache lookup
-    const cacheVersion = version || 'latest';
+    const cacheVersion = version;
     // Check tool cache
     const cachedPath = tc.find('auths', cacheVersion);
     if (cachedPath) {
@@ -67236,6 +67242,10 @@ async function ensureAuthsInstalled(version) {
         core.warning(`Binary not found at expected path: ${binaryPath}`);
     }
     catch (error) {
+        // Integrity failures (checksum mismatch/absent) are fatal — never mask them.
+        if (error instanceof Error && /checksum|unverified binary/i.test(error.message)) {
+            throw error;
+        }
         core.warning(`Failed to download auths: ${error}`);
     }
     return null;
@@ -67263,8 +67273,12 @@ async function verifyChecksum(downloadUrl, filePath) {
         if (error instanceof Error && error.message.includes('checksum mismatch')) {
             throw error;
         }
-        core.warning('SHA256 checksum file not available for this release. ' +
-            'Skipping verification. Consider upgrading to a release with checksums.');
+        // Fail closed: a release whose `.sha256` cannot be fetched cannot be integrity-checked.
+        // Refuse to run an unverified binary; pin `auths-version` to a release with checksums.
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(`Could not verify the SHA256 checksum of the downloaded auths binary ` +
+            `(no usable .sha256 at ${checksumUrl}: ${detail}). ` +
+            `Refusing to run an unverified binary. Pin 'auths-version' to a release that publishes checksums.`);
     }
 }
 /**
@@ -67295,10 +67309,12 @@ function getAuthsDownloadUrl(version) {
     }
     const ext = platform === 'win32' ? '.zip' : '.tar.gz';
     const assetName = `auths-${platformName}-${archName}${ext}`;
-    if (version) {
-        return `https://github.com/${CLI_RELEASE_REPO}/releases/download/v${version}/${assetName}`;
+    // Version is required (callers guard before reaching here); never build a
+    // `releases/latest` URL — pinning is mandatory.
+    if (!version) {
+        return null;
     }
-    return `https://github.com/${CLI_RELEASE_REPO}/releases/latest/download/${assetName}`;
+    return `https://github.com/${CLI_RELEASE_REPO}/releases/download/v${version}/${assetName}`;
 }
 
 
@@ -67361,6 +67377,20 @@ async function run() {
         const authsPath = await (0, installer_1.ensureAuthsInstalled)(version);
         if (!authsPath) {
             throw new Error('Failed to find or install auths CLI');
+        }
+        // Maintainer pre-flight: an ephemeral CI signature is only verifiable if this repo
+        // publishes a trust root (`.auths/roots`) that downstream verifiers pin to. Without
+        // one, the signature is produced but `auths verify` will report RootNotPinned — an
+        // unanchored attestation. Warn loudly by default; `fail-on-unanchored: true` aborts.
+        const failOnUnanchored = core.getInput('fail-on-unanchored') === 'true';
+        if (!fs.existsSync('.auths/roots')) {
+            const msg = 'No .auths/roots trust root found in this repository. Signing will still produce an ' +
+                'attestation, but verifiers have nothing to anchor it to (`auths verify` → RootNotPinned). ' +
+                'Run `auths init` and commit `.auths/roots` so releases are offline-verifiable.';
+            if (failOnUnanchored) {
+                throw new Error(`Unanchored signing aborted: ${msg}`);
+            }
+            core.warning(msg);
         }
         const commitSha = core.getInput('commit-sha') || process.env.GITHUB_SHA || '';
         const note = core.getInput('note') || '';

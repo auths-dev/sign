@@ -45,28 +45,34 @@ const mockIo = require('@actions/io');
 describe('getAuthsDownloadUrl', () => {
   afterEach(() => { jest.resetAllMocks(); });
 
-  it('returns Linux x86_64 tar.gz URL for latest', () => {
+  it('returns Linux x86_64 tar.gz URL for a pinned version', () => {
     mockOs.platform.mockReturnValue('linux');
     mockOs.arch.mockReturnValue('x64');
-    expect(getAuthsDownloadUrl('')).toBe(
-      'https://github.com/auths-dev/auths/releases/latest/download/auths-linux-x86_64.tar.gz'
+    expect(getAuthsDownloadUrl('0.5.0')).toBe(
+      'https://github.com/auths-dev/auths/releases/download/v0.5.0/auths-linux-x86_64.tar.gz'
     );
   });
 
-  it('returns macOS aarch64 tar.gz URL for latest', () => {
+  it('returns macOS aarch64 tar.gz URL for a pinned version', () => {
     mockOs.platform.mockReturnValue('darwin');
     mockOs.arch.mockReturnValue('arm64');
-    expect(getAuthsDownloadUrl('')).toBe(
-      'https://github.com/auths-dev/auths/releases/latest/download/auths-macos-aarch64.tar.gz'
+    expect(getAuthsDownloadUrl('0.5.0')).toBe(
+      'https://github.com/auths-dev/auths/releases/download/v0.5.0/auths-macos-aarch64.tar.gz'
     );
   });
 
-  it('returns Windows x86_64 zip URL for latest', () => {
+  it('returns Windows x86_64 zip URL for a pinned version', () => {
     mockOs.platform.mockReturnValue('win32');
     mockOs.arch.mockReturnValue('x64');
-    expect(getAuthsDownloadUrl('')).toBe(
-      'https://github.com/auths-dev/auths/releases/latest/download/auths-windows-x86_64.zip'
+    expect(getAuthsDownloadUrl('0.5.0')).toBe(
+      'https://github.com/auths-dev/auths/releases/download/v0.5.0/auths-windows-x86_64.zip'
     );
+  });
+
+  it('returns null when no version is pinned (no latest fallback)', () => {
+    mockOs.platform.mockReturnValue('linux');
+    mockOs.arch.mockReturnValue('x64');
+    expect(getAuthsDownloadUrl('')).toBeNull();
   });
 
   it('returns versioned URL when version specified', () => {
@@ -136,11 +142,12 @@ describe('verifyChecksum', () => {
     await expect(verifyChecksum('https://example.com/test.tar.gz', testFile)).rejects.toThrow('checksum mismatch');
   });
 
-  it('warns but continues when checksum file not available', async () => {
+  it('fails closed when the checksum file is not available', async () => {
     const testFile = path.join(testDir, 'test.tar.gz');
     fs.writeFileSync(testFile, 'content');
     mockTc.downloadTool.mockRejectedValue(new Error('HTTP 404'));
-    await expect(verifyChecksum('https://example.com/test.tar.gz', testFile)).resolves.toBeUndefined();
+    await expect(verifyChecksum('https://example.com/test.tar.gz', testFile))
+      .rejects.toThrow('Refusing to run an unverified binary');
   });
 });
 
@@ -178,8 +185,15 @@ describe('ensureAuthsInstalled - cross-run caching', () => {
     const extractedDir = path.join(realTmpdir, 'auths-extracted');
     fs.mkdirSync(extractedDir, { recursive: true });
     fs.writeFileSync(path.join(extractedDir, 'auths'), 'binary-content');
+    // A real download file + matching .sha256 so the (now fail-closed) checksum passes.
+    const dlFile = path.join(realTmpdir, 'auths-sign-dl.tar.gz');
+    fs.writeFileSync(dlFile, 'binary-bytes');
+    const sumFile = `${dlFile}.sha256`;
+    const dlHash = crypto.createHash('sha256').update(fs.readFileSync(dlFile)).digest('hex');
+    fs.writeFileSync(sumFile, `${dlHash}  auths.tar.gz\n`);
+
     mockCache.restoreCache.mockResolvedValue(undefined);
-    mockTc.downloadTool.mockResolvedValue('/tmp/download.tar.gz');
+    mockTc.downloadTool.mockImplementation(async (url: string) => (url.endsWith('.sha256') ? sumFile : dlFile));
     mockTc.extractTar.mockResolvedValue(extractedDir);
     mockCache.saveCache.mockResolvedValue(1);
     mockTc.cacheDir.mockResolvedValue('/tool-cache/auths/0.5.0');
@@ -190,21 +204,11 @@ describe('ensureAuthsInstalled - cross-run caching', () => {
     expect(result).toBe('/tool-cache/auths/0.5.0/auths');
 
     if (fs.existsSync(extractedDir)) fs.rmSync(extractedDir, { recursive: true });
+    [dlFile, sumFile].forEach(f => { if (fs.existsSync(f)) fs.rmSync(f); });
   });
 
-  it('skips cross-run cache for latest version', async () => {
-    const extractedDir = path.join(realTmpdir, 'auths-extracted-latest');
-    fs.mkdirSync(extractedDir, { recursive: true });
-    fs.writeFileSync(path.join(extractedDir, 'auths'), 'binary-content');
-    mockTc.downloadTool.mockResolvedValue('/tmp/download.tar.gz');
-    mockTc.extractTar.mockResolvedValue(extractedDir);
-    mockTc.cacheDir.mockResolvedValue('/tool-cache/auths/latest');
-
-    const result = await ensureAuthsInstalled('');
-    expect(mockCache.restoreCache).not.toHaveBeenCalled();
-    expect(mockCache.saveCache).not.toHaveBeenCalled();
-    expect(result).toBe('/tool-cache/auths/latest/auths');
-
-    if (fs.existsSync(extractedDir)) fs.rmSync(extractedDir, { recursive: true });
+  it('refuses to run when no version is pinned (no latest fallback)', async () => {
+    await expect(ensureAuthsInstalled('')).rejects.toThrow("'auths-version' input must be pinned");
+    expect(mockTc.downloadTool).not.toHaveBeenCalled();
   });
 });

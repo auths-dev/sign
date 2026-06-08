@@ -7,14 +7,20 @@ Sign build artifacts and commits in CI using ephemeral keys. **No secrets needed
 ## Quick Start
 
 ```yaml
-- uses: auths-dev/sign@v1
-  with:
-    files: |
-      dist/*.tar.gz
-      dist/*.zip
+permissions:
+  contents: write             # no id-token, no secrets — ephemeral signing needs neither
+steps:
+  - uses: auths-dev/sign@v1
+    with:
+      auths-version: "0.0.1-rc.12"   # pin the CLI — the action never resolves `latest`
+      files: |
+        dist/*.tar.gz
+        dist/*.zip
 ```
 
 No tokens. No secrets. The action generates a throwaway key per run, signs your artifacts, and discards the key. Trust is anchored to the commit, not to a CI credential.
+
+> **Publish a trust root first.** The signature is only verifiable if your repo commits a `.auths/roots` pin (`auths init`). Without it, the action still signs but warns that the attestation is **unanchored** (`auths verify` → RootNotPinned). Set `fail-on-unanchored: true` to make that a hard error.
 
 ## How It Works
 
@@ -54,7 +60,8 @@ No tokens. No secrets. The action generates a throwaway key per run, signs your 
 | `commits` | No | | Git revision range to sign |
 | `commit-sha` | No | `$GITHUB_SHA` | Commit SHA to anchor attestation to |
 | `note` | No | | Note to include in the attestation |
-| `auths-version` | No | latest | Auths CLI version to use |
+| `auths-version` | Yes (unless on PATH) | | Auths CLI version to **pin** (e.g. `0.0.1-rc.12`); the action never resolves `latest` and fails closed without a verifiable `.sha256` |
+| `fail-on-unanchored` | No | `false` | Fail (instead of warn) when no `.auths/roots` trust root is present |
 
 At least one of `files` or `commits` must be provided.
 

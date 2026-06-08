@@ -28,8 +28,17 @@ export async function ensureAuthsInstalled(version: string): Promise<string | nu
     // Not found in PATH
   }
 
+  // Supply-chain hardening: require an explicitly pinned version; never resolve
+  // `releases/latest`. (A pre-installed `auths` on PATH is exempt — handled above.)
+  if (!version) {
+    throw new Error(
+      "The 'auths-version' input must be pinned to a released version (e.g. '0.0.1-rc.12'); " +
+      "resolving 'latest' is not allowed."
+    );
+  }
+
   // Determine the version for cache lookup
-  const cacheVersion = version || 'latest';
+  const cacheVersion = version;
 
   // Check tool cache
   const cachedPath = tc.find('auths', cacheVersion);
@@ -118,6 +127,10 @@ export async function ensureAuthsInstalled(version: string): Promise<string | nu
 
     core.warning(`Binary not found at expected path: ${binaryPath}`);
   } catch (error) {
+    // Integrity failures (checksum mismatch/absent) are fatal — never mask them.
+    if (error instanceof Error && /checksum|unverified binary/i.test(error.message)) {
+      throw error;
+    }
     core.warning(`Failed to download auths: ${error}`);
   }
 
@@ -152,9 +165,13 @@ export async function verifyChecksum(downloadUrl: string, filePath: string): Pro
     if (error instanceof Error && error.message.includes('checksum mismatch')) {
       throw error;
     }
-    core.warning(
-      'SHA256 checksum file not available for this release. ' +
-      'Skipping verification. Consider upgrading to a release with checksums.'
+    // Fail closed: a release whose `.sha256` cannot be fetched cannot be integrity-checked.
+    // Refuse to run an unverified binary; pin `auths-version` to a release with checksums.
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Could not verify the SHA256 checksum of the downloaded auths binary ` +
+      `(no usable .sha256 at ${checksumUrl}: ${detail}). ` +
+      `Refusing to run an unverified binary. Pin 'auths-version' to a release that publishes checksums.`
     );
   }
 }
@@ -194,9 +211,10 @@ export function getAuthsDownloadUrl(version: string): string | null {
   const ext = platform === 'win32' ? '.zip' : '.tar.gz';
   const assetName = `auths-${platformName}-${archName}${ext}`;
 
-  if (version) {
-    return `https://github.com/${CLI_RELEASE_REPO}/releases/download/v${version}/${assetName}`;
+  // Version is required (callers guard before reaching here); never build a
+  // `releases/latest` URL — pinning is mandatory.
+  if (!version) {
+    return null;
   }
-
-  return `https://github.com/${CLI_RELEASE_REPO}/releases/latest/download/${assetName}`;
+  return `https://github.com/${CLI_RELEASE_REPO}/releases/download/v${version}/${assetName}`;
 }

@@ -11,6 +11,7 @@ let mockWarnings: string[] = [];
 let mockGlobFiles: string[] = [];
 let mockExecExitCode = 0;
 let mockExecOutputResult = { exitCode: 0, stdout: '', stderr: '' };
+let mockRootsExists = true;
 
 jest.mock('@actions/core', () => ({
   getInput: jest.fn((name: string) => mockInputs[name] || ''),
@@ -44,6 +45,7 @@ jest.mock('fs', () => {
   return {
     ...actual,
     existsSync: jest.fn((p: string) => {
+      if (p.includes('.auths/roots')) return mockRootsExists;
       if (p.includes('.auths.json')) return true;
       return actual.existsSync(p);
     }),
@@ -73,6 +75,7 @@ function resetMockState() {
   mockGlobFiles = ['/workspace/dist/index.js'];
   mockExecExitCode = 0;
   mockExecOutputResult = { exitCode: 0, stdout: '', stderr: '' };
+  mockRootsExists = true;
 }
 
 async function runMain() {
@@ -130,5 +133,26 @@ describe('Sign action integration (ephemeral)', () => {
 
     expect(mockFailed).toHaveLength(1);
     expect(mockFailed[0]).toContain('Failed to sign');
+  });
+
+  it('warns (but still signs) when no .auths/roots trust root is present', async () => {
+    mockRootsExists = false;
+
+    await runMain();
+
+    expect(mockFailed).toHaveLength(0);
+    expect(mockWarnings.some(w => w.includes('.auths/roots'))).toBe(true);
+    // Signing still proceeds (advisory by default).
+    expect(JSON.parse(mockOutputs['signed-files'])).toEqual(['/workspace/dist/index.js']);
+  });
+
+  it('aborts when fail-on-unanchored is true and no .auths/roots exists', async () => {
+    mockRootsExists = false;
+    mockInputs['fail-on-unanchored'] = 'true';
+
+    await runMain();
+
+    expect(mockFailed).toHaveLength(1);
+    expect(mockFailed[0]).toContain('Unanchored signing aborted');
   });
 });

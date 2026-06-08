@@ -20,9 +20,13 @@ inputs:
     required: false
     default: ''
   auths-version:
-    description: 'Auths CLI version to use (leave empty for latest)'
+    description: 'Auths CLI version to pin (e.g. "0.0.1-rc.12"). Required unless `auths` is on PATH — the action never resolves `latest` (supply-chain hardening). The pinned release must publish a `.sha256` checksum.'
     required: false
     default: ''
+  fail-on-unanchored:
+    description: 'Fail (instead of warn) when this repo has no `.auths/roots` trust root, so signing never silently produces an attestation that verifiers cannot anchor.'
+    required: false
+    default: 'false'
 
 outputs:
   signed-files:

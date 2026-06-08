@@ -22,6 +22,22 @@ async function run(): Promise<void> {
       throw new Error('Failed to find or install auths CLI');
     }
 
+    // Maintainer pre-flight: an ephemeral CI signature is only verifiable if this repo
+    // publishes a trust root (`.auths/roots`) that downstream verifiers pin to. Without
+    // one, the signature is produced but `auths verify` will report RootNotPinned — an
+    // unanchored attestation. Warn loudly by default; `fail-on-unanchored: true` aborts.
+    const failOnUnanchored = core.getInput('fail-on-unanchored') === 'true';
+    if (!fs.existsSync('.auths/roots')) {
+      const msg =
+        'No .auths/roots trust root found in this repository. Signing will still produce an ' +
+        'attestation, but verifiers have nothing to anchor it to (`auths verify` → RootNotPinned). ' +
+        'Run `auths init` and commit `.auths/roots` so releases are offline-verifiable.';
+      if (failOnUnanchored) {
+        throw new Error(`Unanchored signing aborted: ${msg}`);
+      }
+      core.warning(msg);
+    }
+
     const commitSha = core.getInput('commit-sha') || process.env.GITHUB_SHA || '';
     const note = core.getInput('note') || '';
 
