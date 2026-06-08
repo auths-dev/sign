@@ -72,3 +72,7 @@ At least one of `files` or `commits` must be provided.
 | `signed-files` | JSON array of signed file paths |
 | `attestation-files` | JSON array of `.auths.json` paths |
 | `signed-commits` | JSON array of signed commit SHAs |
+
+## License
+
+Apache-2.0. See [LICENSE](LICENSE).
