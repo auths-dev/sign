@@ -1,5 +1,0 @@
-# auths:managed — do not edit manually
-# auths:attestation
-zDnaeTDAGwQd8YFykWwyeQEQC8hrHHWbeb9AsoJanKqheTQ9g@auths.local namespaces="git" ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBClLNRlBdgjEEPozFdM4rZh556aLyLCJLj77b+Ru5ACTaqMmXLuRlUWkonba8LKP2NKBWNme+4+tRLYngOaDDxo=
-zDnaeWBqqznf8xyJhTAfc1RU4VFzUoRmw85G3hVdVS9mpLemP@auths.local namespaces="git" ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBFWH2TZY7VvnvhQCfj2uH3MSyWgBH6pFMCq99negx0sqU00CoDzJpe2RLT+pDHkSO6KAajcrTyuF5TVHCUvaK94=
-# auths:manual
