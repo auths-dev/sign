@@ -7,16 +7,29 @@ Sign build artifacts and commits in CI using ephemeral keys. **No secrets needed
 ## Quick Start
 
 ```yaml
+name: Sign artifacts
+on:
+  push:
+    branches: [main]
+
 permissions:
   contents: write             # no id-token, no secrets — ephemeral signing needs neither
-steps:
-  - uses: auths-dev/sign@v1
-    with:
-      auths-version: "0.0.1-rc.12"   # pin the CLI — the action never resolves `latest`
-      files: |
-        dist/*.tar.gz
-        dist/*.zip
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: auths-dev/sign@v1
+        with:
+          auths-version: "0.0.1-rc.12"   # pin the CLI — the action never resolves `latest`
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
 ```
+
+A copy-paste starter lives at [`examples/.github/workflows/auths.yml`](examples/.github/workflows/auths.yml).
 
 No tokens. No secrets. The action generates a throwaway key per run, signs your artifacts, and discards the key. Trust is anchored to the commit, not to a CI credential.
 

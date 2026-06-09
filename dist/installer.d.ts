@@ -1,6 +1,8 @@
 /**
  * Ensure auths CLI is available, downloading if necessary.
- * @param version - Specific version to use (e.g., "0.5.0"), or empty for latest
+ * @param version - Released version to pin (e.g., "0.0.1-rc.12"). Required unless
+ *                  `auths` is already on PATH — an empty version throws; `latest`
+ *                  is never resolved (supply-chain hardening).
  */
 export declare function ensureAuthsInstalled(version: string): Promise<string | null>;
 /**
