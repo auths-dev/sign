@@ -22,3 +22,5 @@ jobs:
       - uses: ./
         with:
           commits: 'HEAD~1..HEAD'
+          # The hardened installer never resolves `latest`; unpinned would throw.
+          auths-version: '0.0.1-rc.12'
