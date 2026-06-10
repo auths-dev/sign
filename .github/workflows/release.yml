@@ -38,7 +38,7 @@ jobs:
           note: 'GitHub Actions release — ${{ github.ref_name }}'
           # The hardened installer never resolves `latest`; an unpinned version
           # aborts the release on a runner without `auths` on PATH.
-          auths-version: '0.0.1-rc.12'
+          auths-version: '0.1.2'
 
       - name: Generate SHA256 checksums
         run: |
@@ -67,7 +67,7 @@ jobs:
             ```yaml
             - uses: auths-dev/sign@v1
               with:
-                auths-version: '0.0.1-rc.12'  # pin — the action never resolves `latest`
+                auths-version: '0.1.2'  # pin — the action never resolves `latest`
                 files: 'dist/index.js'
             ```
 
