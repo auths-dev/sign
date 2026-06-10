@@ -23,7 +23,7 @@ jobs:
 
       - uses: auths-dev/sign@v1
         with:
-          auths-version: "0.1.2"   # pin the CLI — the action never resolves `latest`
+          auths-version: "0.1.3"   # pin the CLI — the action never resolves `latest`
           files: |
             dist/*.tar.gz
             dist/*.zip
@@ -73,7 +73,7 @@ No tokens. No secrets. The action generates a throwaway key per run, signs your 
 | `commits` | No | | Git revision range to sign |
 | `commit-sha` | No | `$GITHUB_SHA` | Commit SHA to anchor attestation to |
 | `note` | No | | Note to include in the attestation |
-| `auths-version` | Yes (unless on PATH) | | Auths CLI version to **pin** (e.g. `0.1.2`); the action never resolves `latest` and fails closed without a verifiable `.sha256` |
+| `auths-version` | Yes (unless on PATH) | | Auths CLI version to **pin** (e.g. `0.1.3`); the action never resolves `latest` and fails closed without a verifiable `.sha256` |
 | `fail-on-unanchored` | No | `false` | Fail (instead of warn) when no `.auths/roots` trust root is present |
 
 At least one of `files` or `commits` must be provided.
